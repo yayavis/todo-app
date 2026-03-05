@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>待办事项管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #1e1e1e; color: #d4d4d4; font-family: 'Inter', sans-serif; }
+        .table-container { max-height: 65vh; overflow: auto; }
+        table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
+        th, td { border: 1px solid #404040; padding: 8px 12px; background-color: #2d2d2d; }
+        th { background-color: #3a3a3a; position: sticky; top: 0; z-index: 10; }
+        .due-today { background-color: #4a3a1a !important; border-left: 4px solid #fbbf24 !important; }
+        .overdue { background-color: #4a1a1a !important; border-left: 4px solid #ef4444 !important; }
+        input, select { background-color: #3a3a3a !important; color: #d4d4d4 !important; border-color: #555 !important; }
+    </style>
+</head>
+<body class="p-4">
+    <h1 class="text-2xl font-bold mb-4">📋 待办事项管理</h1>
+    <p>页面已部署，API 配置中...</p>
+</body>
+</html>
