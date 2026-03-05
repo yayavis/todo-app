@@ -18,7 +18,249 @@
     </style>
 </head>
 <body class="p-4">
-    <h1 class="text-2xl font-bold mb-4">📋 待办事项管理</h1>
-    <p>页面已部署，API 配置中...</p>
+    <header class="flex justify-between items-center mb-4">
+        <div>
+            <h1 class="text-2xl font-bold">📋 待办事项管理</h1>
+            <p class="text-gray-400 text-sm">GitHub Pages版 - 数据同步到云端</p>
+        </div>
+        <div class="flex gap-2">
+            <span id="sync-status" class="text-sm text-gray-400"></span>
+            <button onclick="exportData()" class="px-3 py-2 bg-green-600 rounded text-sm">
+                <i class="fas fa-download"></i> 导出
+            </button>
+            <label class="px-3 py-2 bg-blue-600 rounded text-sm cursor-pointer">
+                <i class="fas fa-upload"></i> 导入
+                <input type="file" id="importFile" class="hidden" accept=".json" onchange="importData(this)">
+            </label>
+        </div>
+    </header>
+
+    <div class="grid grid-cols-4 gap-3 mb-4">
+        <div class="bg-blue-900/50 border border-blue-700 rounded p-3 text-center">
+            <p class="text-xs text-blue-300">未完成</p>
+            <p id="stat-uncompleted" class="text-xl font-bold">0</p>
+        </div>
+        <div class="bg-red-900/50 border border-red-700 rounded p-3 text-center">
+            <p class="text-xs text-red-300">逾期</p>
+            <p id="stat-overdue" class="text-xl font-bold">0</p>
+        </div>
+        <div class="bg-green-900/50 border border-green-700 rounded p-3 text-center">
+            <p class="text-xs text-green-300">今日</p>
+            <p id="stat-today" class="text-xl font-bold">0</p>
+        </div>
+        <div class="bg-purple-900/50 border border-purple-700 rounded p-3 text-center">
+            <p class="text-xs text-purple-300">总计</p>
+            <p id="stat-total" class="text-xl font-bold">0</p>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 p-3 rounded mb-4 flex flex-wrap gap-2">
+        <button onclick="addRow()" class="px-3 py-2 bg-purple-600 rounded text-sm">
+            <i class="fas fa-plus"></i> 添加
+        </button>
+        <button onclick="deleteSelected()" class="px-3 py-2 bg-red-600 rounded text-sm">
+            <i class="fas fa-trash"></i> 删除
+        </button>
+        <select id="projectFilter" onchange="renderTable()" class="rounded px-2 text-sm">
+            <option value="">全部项目</option>
+        </select>
+        <select id="statusFilter" onchange="renderTable()" class="rounded px-2 text-sm">
+            <option value="">全部状态</option>
+            <option value="未开始">未开始</option>
+            <option value="进行中">进行中</option>
+            <option value="暂停">暂停</option>
+            <option value="已完成">已完成</option>
+        </select>
+        <input type="text" id="searchInput" placeholder="搜索..." oninput="renderTable()" 
+            class="rounded px-2 text-sm flex-1 min-w-[150px]">
+    </div>
+
+    <div class="table-container border rounded">
+        <table>
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const API_BASE = 'https://purple-clouds-cross.loca.lt';
+        const USER_ID = 'yayavis';
+        
+        let dbData = { headers: ['项目', '待办事项', '二级任务', '状态', '截止日期', '创建日期', '事项来源', '备注'], rows: [] };
+        let selectedRows = new Set();
+
+        async function loadData() {
+            showStatus('加载中...');
+            try {
+                const response = await fetch(`${API_BASE}/api/todo/${USER_ID}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.headers && data.rows) dbData = data;
+                }
+            } catch (e) { console.log('使用本地数据'); }
+            renderTable();
+            showStatus('已同步');
+        }
+
+        async function saveData() {
+            showStatus('保存中...');
+            try {
+                const response = await fetch(`${API_BASE}/api/todo/${USER_ID}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dbData)
+                });
+                showStatus(response.ok ? '已保存' : '保存失败');
+            } catch (e) { showStatus('离线模式'); }
+        }
+
+        function showStatus(msg) { document.getElementById('sync-status').textContent = msg; }
+
+        function renderTable() {
+            const projectFilter = document.getElementById('projectFilter').value;
+            const statusFilter = document.getElementById('statusFilter').value;
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            
+            let rows = dbData.rows.filter(row => {
+                if (projectFilter && row['项目'] !== projectFilter) return false;
+                if (statusFilter && row['状态'] !== statusFilter) return false;
+                if (searchTerm) {
+                    const text = Object.values(row).join(' ').toLowerCase();
+                    if (!text.includes(searchTerm)) return false;
+                }
+                return true;
+            });
+
+            rows.sort((a, b) => (a['截止日期'] || '9999').localeCompare(b['截止日期'] || '9999'));
+
+            document.getElementById('tableHead').innerHTML = `
+                <tr>
+                    <th style="width:40px"><input type="checkbox" onchange="toggleSelectAll(this)"></th>
+                    ${dbData.headers.map(h => `<th>${h}</th>`).join('')}
+                </tr>
+            `;
+
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('tableBody').innerHTML = rows.map((row, idx) => {
+                const realIdx = dbData.rows.indexOf(row);
+                const isOverdue = row['截止日期'] && row['截止日期'] < today && row['状态'] !== '已完成';
+                const isToday = row['截止日期'] === today;
+                const rowClass = isOverdue ? 'overdue' : (isToday ? 'due-today' : '');
+                
+                return `<tr class="${rowClass}">
+                    <td><input type="checkbox" ${selectedRows.has(realIdx) ? 'checked' : ''} onchange="toggleRow(${realIdx})"></td>
+                    ${dbData.headers.map(h => renderCell(row, h, realIdx)).join('')}
+                </tr>`;
+            }).join('');
+
+            updateStats();
+            updateProjectFilter();
+        }
+
+        function renderCell(row, header, rowIdx) {
+            const value = row[header] || '';
+            if (header === '状态') {
+                const colors = {'未开始': 'text-gray-400', '进行中': 'text-blue-400', '已完成': 'text-green-400', '暂停': 'text-yellow-400'};
+                return `<td>
+                    <select class="${colors[value] || ''} bg-transparent border-none w-full" onchange="updateCell(${rowIdx}, '${header}', this.value)">
+                        <option value="未开始" ${value==='未开始'?'selected':''}>未开始</option>
+                        <option value="进行中" ${value==='进行中'?'selected':''}>进行中</option>
+                        <option value="暂停" ${value==='暂停'?'selected':''}>暂停</option>
+                        <option value="已完成" ${value==='已完成'?'selected':''}>已完成</option>
+                    </select>
+                </td>`;
+            }
+            if (header === '截止日期' || header === '创建日期') {
+                return `<td><input type="date" value="${value}" onchange="updateCell(${rowIdx}, '${header}', this.value)" class="bg-transparent border-none w-full"></td>`;
+            }
+            return `<td contenteditable="true" onblur="updateCell(${rowIdx}, '${header}', this.innerText)">${value}</td>`;
+        }
+
+        function updateCell(rowIdx, header, value) {
+            dbData.rows[rowIdx][header] = value;
+            saveData();
+            renderTable();
+        }
+
+        function addRow() {
+            const newRow = {};
+            dbData.headers.forEach(h => {
+                if (h === '创建日期') newRow[h] = new Date().toISOString().split('T')[0];
+                else if (h === '状态') newRow[h] = '未开始';
+                else newRow[h] = '';
+            });
+            dbData.rows.push(newRow);
+            saveData();
+            renderTable();
+        }
+
+        function deleteSelected() {
+            if (selectedRows.size === 0) return alert('请先选择');
+            if (!confirm(`删除 ${selectedRows.size} 条?`)) return;
+            const indices = Array.from(selectedRows).sort((a,b) => b-a);
+            indices.forEach(idx => dbData.rows.splice(idx, 1));
+            selectedRows.clear();
+            saveData();
+            renderTable();
+        }
+
+        function toggleRow(idx) { selectedRows.has(idx) ? selectedRows.delete(idx) : selectedRows.add(idx); }
+
+        function toggleSelectAll(cb) {
+            document.querySelectorAll('input[type="checkbox"]').forEach(c => {
+                if (c !== cb) {
+                    c.checked = cb.checked;
+                    const idx = parseInt(c.getAttribute('onchange')?.match(/\d+/)?.[0]);
+                    if (!isNaN(idx)) cb.checked ? selectedRows.add(idx) : selectedRows.delete(idx);
+                }
+            });
+        }
+
+        function updateStats() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('stat-uncompleted').textContent = dbData.rows.filter(r => r['状态'] !== '已完成').length;
+            document.getElementById('stat-overdue').textContent = dbData.rows.filter(r => r['截止日期'] && r['截止日期'] < today && r['状态'] !== '已完成').length;
+            document.getElementById('stat-today').textContent = dbData.rows.filter(r => r['截止日期'] === today).length;
+            document.getElementById('stat-total').textContent = dbData.rows.length;
+        }
+
+        function updateProjectFilter() {
+            const projects = [...new Set(dbData.rows.map(r => r['项目']).filter(Boolean))];
+            const select = document.getElementById('projectFilter');
+            const current = select.value;
+            select.innerHTML = '<option value="">全部项目</option>' + projects.map(p => `<option value="${p}">${p}</option>`).join('');
+            select.value = current;
+        }
+
+        function exportData() {
+            const blob = new Blob([JSON.stringify(dbData, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `todo_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+        }
+
+        function importData(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.rows) {
+                        dbData = data;
+                        saveData();
+                        renderTable();
+                        alert('导入成功');
+                    }
+                } catch(err) { alert('导入失败: ' + err.message); }
+            };
+            reader.readAsText(file);
+            input.value = '';
+        }
+
+        loadData();
+    </script>
 </body>
 </html>
